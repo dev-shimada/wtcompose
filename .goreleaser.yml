@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+homebrew_casks:
+  - name: "{{ .ProjectName }}"
+    description: "Generate a per-worktree docker-compose.override.yml so concurrent git worktrees don't collide on container_name/ports"
+    homepage: "https://github.com/dev-shimada/{{ .ProjectName }}"
+
+    repository:
+      owner: dev-shimada
+      name: homebrew-{{ .ProjectName }}
+      branch: "{{ .ProjectName }}"
+      token: "{{ .Env.PRIVATE_GITHUB_TOKEN }}"
+
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          branch: main
+
+    binaries:
+      - "{{ .ProjectName }}"

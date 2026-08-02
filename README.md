@@ -4,9 +4,6 @@
 worktree ごとに一意な `container_name` / ホスト側ポートを割り当てた
 `docker-compose.override.yml` を生成する CLI。
 
-もともと zsh 関数 (`compose-worktree-override`, `yq` 依存) だったものを Go に移植したもの。
-`yq` 不要、単一バイナリで動く。特定のリポジトリに依存せず、`docker-compose.yml` があるディレクトリならどこでも使える。
-
 ## 使い方
 
 `docker-compose.yml` があるディレクトリで実行する。
@@ -31,6 +28,15 @@ docker compose up
 ```
 
 ## インストール
+
+### Homebrew
+
+```sh
+brew tap dev-shimada/wtcompose
+brew install wtcompose
+```
+
+### Go
 
 ```sh
 go install github.com/dev-shimada/wtcompose@latest
