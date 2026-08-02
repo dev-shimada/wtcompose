@@ -1,0 +1,9 @@
+{
+  "name": "wtcompose",
+  "image": "ghcr.io/dev-shimada/golang-1.26-trixie:latest",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go"]
+    }
+  }
+}

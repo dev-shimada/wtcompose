@@ -1,0 +1,6 @@
+# Go
+/wtcompose
+/dist/
+
+# misc
+.DS_Store
