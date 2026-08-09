@@ -104,6 +104,36 @@ make build   # ./wtcompose を生成
 make install # $GOBIN に install
 ```
 
+## herdr との統合
+
+[herdr](https://herdr.dev) はコーディングエージェント向けのターミナルマルチプレクサ。worktree ごとに割り当てられたポートは worktree を切り替えるたびに変わるため、`wtcompose herdr` は今そのディレクトリで**実際に起動しているコンテナ**が何番のポートを listen しているかを herdr のサイドバーに常時表示する。
+
+herdr に「プラグイン」機構はなく、herdr 自身が公開している以下の仕組みを組み合わせて実現している:
+
+- `herdr workspace report-metadata` — ワークスペースに表示専用の `--token NAME=VALUE` を報告できる(`--ttl-ms` で自動失効も設定可能)
+- `config.toml` の `[ui.sidebar.spaces].rows` — 組み込みの行(`state_icon` / `workspace` / `branch` / `git_status`)に加えて、報告済みトークンを `"$トークン名"` の形で行として追加表示できる
+
+### セットアップ
+
+1. `~/.config/herdr/config.toml` の `[ui.sidebar.spaces]` にトークンの行を追加する(既存の行がある場合は末尾に追記):
+
+   ```toml
+   [ui.sidebar.spaces]
+   rows = [["state_icon", "workspace"], ["branch", "git_status"], ["$wtcompose_ports"]]
+   ```
+
+   `herdr server reload-config` で反映される。ポートを報告していない workspace ではこの行は単に表示されない。
+
+2. worktree のペイン内(herdr が管理するペイン。`$HERDR_WORKSPACE_ID` が設定されている必要がある)で `docker compose up` した後、同じディレクトリで監視を起動する:
+
+   ```sh
+   wtcompose herdr
+   ```
+
+   デフォルトは 5 秒間隔で `docker compose ps --format json` をポーリングし、`web:20000 db:20002` のような文字列を `wtcompose_ports` トークンとして報告し続ける。間隔は `--interval` で変更できる(例: `wtcompose herdr --interval 10s`)。
+
+   `Ctrl-C` で止めるとトークンを明示的にクリアしてから終了する。プロセスが強制終了された場合でも、TTL(ポーリング間隔の3倍)が切れれば自動的にサイドバーから消える。
+
 ## 対応していないポート形式
 
 `ports` のうち `"ホスト:コンテナ"` (`"ホスト:コンテナ/tcp"` / `"/udp"` 含む) の形式だけホスト側を付け替える。

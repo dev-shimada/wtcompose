@@ -30,6 +30,14 @@ const overrideFilename = "docker-compose.override.yml"
 var hostPortRegex = regexp.MustCompile(`^[0-9]+:([0-9]+)(/(tcp|udp))?$`)
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "herdr" {
+		if err := runHerdrWatch(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "❌ "+err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ "+err.Error())
 		os.Exit(1)
