@@ -9,10 +9,13 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/dev-shimada/wtcompose/internal/compose"
 	"github.com/dev-shimada/wtcompose/internal/gitinfo"
@@ -30,12 +33,21 @@ const overrideFilename = "docker-compose.override.yml"
 var hostPortRegex = regexp.MustCompile(`^[0-9]+:([0-9]+)(/(tcp|udp))?$`)
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "herdr" {
-		if err := runHerdrWatch(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "❌ "+err.Error())
-			os.Exit(1)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "herdr":
+			if err := runHerdrWatch(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "❌ "+err.Error())
+				os.Exit(1)
+			}
+			return
+		default:
+			if err := runComposePassthrough(os.Args[1:]); err != nil {
+				fmt.Fprintln(os.Stderr, "❌ "+err.Error())
+				os.Exit(1)
+			}
+			return
 		}
-		return
 	}
 
 	if err := run(); err != nil {
@@ -44,7 +56,58 @@ func main() {
 	}
 }
 
+// runComposePassthrough regenerates the override file (so any docker
+// compose invocation below picks up this worktree's unique container_name
+// / ports) and then execs `docker compose <args>` in place of this
+// process, so stdio, the tty, signals, and the exit code are all exactly
+// docker compose's own.
+func runComposePassthrough(args []string) error {
+	if reason, explicit := explicitComposeFile(args); explicit {
+		return fmt.Errorf("%s により明示的な compose ファイルが指定されているため、docker-compose.override.yml は自動読み込みされず wtcompose のポート分離は働きません。この操作は `docker compose ...` を直接実行してください", reason)
+	}
+
+	if err := generateOverride(os.Stderr); err != nil {
+		return err
+	}
+
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		return fmt.Errorf("docker が見つかりません: %w", err)
+	}
+
+	argv := append([]string{"docker", "compose"}, args...)
+	if err := syscall.Exec(dockerPath, argv, os.Environ()); err != nil {
+		return fmt.Errorf("docker compose の実行に失敗しました: %w", err)
+	}
+	return nil // unreachable on success: syscall.Exec replaces this process
+}
+
+// explicitComposeFile reports whether args or the environment select an
+// explicit compose file list, which makes docker compose skip its default
+// file discovery (and therefore skip docker-compose.override.yml) even
+// though wtcompose just wrote one.
+func explicitComposeFile(args []string) (reason string, explicit bool) {
+	for _, a := range args {
+		if a == "-f" || a == "--file" || strings.HasPrefix(a, "--file=") {
+			return "-f/--file", true
+		}
+	}
+	if os.Getenv("COMPOSE_FILE") != "" {
+		return "COMPOSE_FILE 環境変数", true
+	}
+	return "", false
+}
+
 func run() error {
+	return generateOverride(os.Stdout)
+}
+
+// generateOverride parses docker-compose.yml in the current directory and
+// (re)writes docker-compose.override.yml with this worktree's unique
+// container_name / ports, reporting progress to out. Bare `wtcompose`
+// writes to stdout; compose-passthrough invocations write to stderr so
+// stdout stays byte-identical to the wrapped docker compose command.
+func generateOverride(out io.Writer) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -112,7 +175,7 @@ func run() error {
 		if err := os.Remove(overridePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		fmt.Println("ℹ️  container_name / ports を持つserviceがないため、上書きは不要です")
+		fmt.Fprintln(out, "ℹ️  container_name / ports を持つserviceがないため、上書きは不要です")
 		return nil
 	}
 
@@ -132,8 +195,8 @@ func run() error {
 		}
 	}
 
-	fmt.Printf("✅ %s を生成しました(%s/%s)\n", overrideFilename, info.RepoName, info.WorktreeName)
-	fmt.Print(content)
+	fmt.Fprintf(out, "✅ %s を生成しました(%s/%s)\n", overrideFilename, info.RepoName, info.WorktreeName)
+	fmt.Fprint(out, content)
 	return nil
 }
 

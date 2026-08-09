@@ -21,11 +21,20 @@ wtcompose
 - 対象 service が1つもない場合は何もせず、以前このツールが生成した override ファイルが残っていれば削除する
 - このツールが生成したものではない `docker-compose.override.yml` が既に存在する場合は上書きしない
 
-`docker compose up` はそのまま呼べば `docker-compose.override.yml` を自動的にマージする。
+`docker compose` のサブコマンドをそのまま `wtcompose` に続けると、override の再生成 → `docker compose <args>` の実行をまとめて行う(`docker compose` を直接呼んでも override は自動的にマージされるが、その場合は生成し忘れないよう注意):
 
 ```sh
-docker compose up
+wtcompose up -d
+wtcompose ps
+wtcompose logs -f web
+wtcompose down
 ```
+
+- 実体は `docker compose <args>` へのプロセス置き換え(`exec`)なので、標準入出力・シグナル・終了コードは `docker compose` を直接呼んだ場合と同じ
+- override 生成時のメッセージは stderr に出す。`wtcompose ps --format json | jq` のように stdout をそのまま処理するコマンドと組み合わせても壊れない
+- `herdr` は wtcompose 自身のサブコマンドとして予約されているため、`docker compose herdr` へは渡らない([herdr との統合](#herdr-との統合)参照)
+- `-f`/`--file` または `COMPOSE_FILE` で compose ファイルを明示すると `docker-compose.override.yml` が自動読み込みされずポート分離が効かなくなるため、wtcompose はエラーで停止する。その場合は `docker compose -f ... ...` を直接実行すること
+- override の生成に失敗する場合(このツールが生成したものではない `docker-compose.override.yml` が既にある等)は `down` / `ps` を含めどのサブコマンドも実行しない。回避したい場合は `docker compose down` などを直接呼ぶ
 
 ### 例
 
