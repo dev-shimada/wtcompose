@@ -14,6 +14,7 @@ worktree ごとに一意な `container_name` / ホスト側ポートを割り当
 - ポート割り当ては `~/.config/compose-worktree-override/ports.tsv` に永続化。同じ repo/worktree/service/元ポートの組み合わせなら再実行しても同じ値を再利用
 - `wtcompose up` / `wtcompose down` / `wtcompose ps` など、`docker compose` のサブコマンドをそのまま実行できる透過ラッパー
 - [herdr](https://herdr.dev) と連携し、実際に起動しているコンテナのポートをサイドバーに常時表示(`wtcompose herdr`)
+- `docker compose` 本体の補完に委譲した bash/zsh/fish 向けシェル補完
 - 単一バイナリ、`yq` 不要
 
 ## 使い方
@@ -124,6 +125,23 @@ go install github.com/dev-shimada/wtcompose@latest
 make build   # ./wtcompose を生成
 make install # $GOBIN に install
 ```
+
+## シェル補完
+
+`herdr` を除く `wtcompose` のサブコマンドはそのまま `docker compose` への引数になるので、補完も `docker` 本体に丸ごと委譲している。`docker completion <shell>` が生成するスクリプトの識別子を `wtcompose` にリネームしているだけなので、`docker compose` が知っているサブコマンド・フラグ・サービス名の補完(実行中のコンテナ名なども含む)はそのまま使える。`herdr` サブコマンドと `--interval` フラグの補完だけ wtcompose 側で追加している。
+
+```sh
+# bash (~/.bashrc 等に追記)
+source <(wtcompose completion bash)
+
+# zsh (~/.zshrc 等に追記。事前に compinit が必要)
+source <(wtcompose completion zsh)
+
+# fish
+wtcompose completion fish | source
+```
+
+`docker` コマンドがインストールされている必要がある(内部で `docker completion <shell>` と `docker __complete compose ...` を呼び出す)。
 
 ## herdr との統合
 

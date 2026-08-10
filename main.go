@@ -41,6 +41,18 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "completion":
+			if err := runCompletionScript(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "❌ "+err.Error())
+				os.Exit(1)
+			}
+			return
+		case "__complete":
+			if err := runComplete(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "❌ "+err.Error())
+				os.Exit(1)
+			}
+			return
 		default:
 			if err := runComposePassthrough(os.Args[1:]); err != nil {
 				fmt.Fprintln(os.Stderr, "❌ "+err.Error())
