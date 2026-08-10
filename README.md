@@ -4,6 +4,18 @@
 worktree ごとに一意な `container_name` / ホスト側ポートを割り当てた
 `docker-compose.override.yml` を生成する CLI。
 
+同じリポジトリを複数の worktree で並行して開発していると、`docker compose up` した瞬間に
+`container_name` やホストポートの衝突でどちらかが起動に失敗する。wtcompose は worktree ごとに
+一意な値を自動で割り当てることでこれを解消する。
+
+## Features
+
+- worktree ごとに一意な `container_name` / ホストポートを自動割り当て(`docker-compose.yml` 本体は変更しない)
+- ポート割り当ては `~/.config/compose-worktree-override/ports.tsv` に永続化。同じ repo/worktree/service/元ポートの組み合わせなら再実行しても同じ値を再利用
+- `wtcompose up` / `wtcompose down` / `wtcompose ps` など、`docker compose` のサブコマンドをそのまま実行できる透過ラッパー
+- [herdr](https://herdr.dev) と連携し、実際に起動しているコンテナのポートをサイドバーに常時表示(`wtcompose herdr`)
+- 単一バイナリ、`yq` 不要
+
 ## 使い方
 
 `docker-compose.yml` があるディレクトリで実行する。
@@ -161,3 +173,13 @@ herdr に「プラグイン」機構はなく、herdr 自身が公開してい�
 ```sh
 go test ./...
 ```
+
+## Requirements
+
+- Git
+- Docker Compose 2.24+(`ports: !override` タグに対応したバージョンが必要)
+- macOS または Linux(`docker compose` サブコマンドの実行にプロセス置き換え(`exec`)を使うため、Windows は非対応。`.goreleaser.yml` も linux/darwin のみビルドする)
+
+## License
+
+[MIT](./LICENSE)
