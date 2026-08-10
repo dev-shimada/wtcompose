@@ -73,13 +73,21 @@ func main() {
 // / ports) and then execs `docker compose <args>` in place of this
 // process, so stdio, the tty, signals, and the exit code are all exactly
 // docker compose's own.
+//
+// Commands that don't operate on a specific project (--help/-h anywhere,
+// or "version"/"ls"/"help" as the subcommand) skip both the override
+// regeneration and its docker-compose.yml requirement, so they keep
+// working outside any compose project directory, exactly like `docker
+// compose --help` does.
 func runComposePassthrough(args []string) error {
-	if reason, explicit := explicitComposeFile(args); explicit {
-		return fmt.Errorf("%s により明示的な compose ファイルが指定されているため、docker-compose.override.yml は自動読み込みされず wtcompose のポート分離は働きません。この操作は `docker compose ...` を直接実行してください", reason)
-	}
+	if needsComposeFile(args) {
+		if reason, explicit := explicitComposeFile(args); explicit {
+			return fmt.Errorf("%s により明示的な compose ファイルが指定されているため、docker-compose.override.yml は自動読み込みされず wtcompose のポート分離は働きません。この操作は `docker compose ...` を直接実行してください", reason)
+		}
 
-	if err := generateOverride(os.Stderr); err != nil {
-		return err
+		if err := generateOverride(os.Stderr); err != nil {
+			return err
+		}
 	}
 
 	dockerPath, err := exec.LookPath("docker")
@@ -92,6 +100,25 @@ func runComposePassthrough(args []string) error {
 		return fmt.Errorf("docker compose の実行に失敗しました: %w", err)
 	}
 	return nil // unreachable on success: syscall.Exec replaces this process
+}
+
+// needsComposeFile reports whether args target a specific compose project
+// (and therefore need docker-compose.yml / the generated override) as
+// opposed to a discovery/meta command like --help, version, or ls that
+// docker compose itself answers without one.
+func needsComposeFile(args []string) bool {
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			return false
+		}
+	}
+	if len(args) > 0 {
+		switch args[0] {
+		case "version", "ls", "help":
+			return false
+		}
+	}
+	return true
 }
 
 // explicitComposeFile reports whether args or the environment select an
