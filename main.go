@@ -80,13 +80,31 @@ func main() {
 // working outside any compose project directory, exactly like `docker
 // compose --help` does.
 func runComposePassthrough(args []string) error {
-	if needsComposeFile(args) {
+	targetsProject := needsComposeFile(args)
+
+	if targetsProject {
 		if reason, explicit := explicitComposeFile(args); explicit {
 			return fmt.Errorf("%s により明示的な compose ファイルが指定されているため、docker-compose.override.yml は自動読み込みされず wtcompose のポート分離は働きません。この操作は `docker compose ...` を直接実行してください", reason)
 		}
 
 		if err := generateOverride(os.Stderr); err != nil {
 			return err
+		}
+	}
+
+	// Inside a herdr pane, keep the sidebar ports display alive without the
+	// user having to remember to start/stop `wtcompose herdr` themselves:
+	// spawn it in the background on `up`, stop it on `down`. Skipped for
+	// --help/version/etc (targetsProject false), since those aren't
+	// actually starting or stopping anything.
+	if targetsProject && len(args) > 0 {
+		switch args[0] {
+		case "up":
+			if cwd, err := os.Getwd(); err == nil {
+				maybeStartHerdrWatcher(cwd)
+			}
+		case "down":
+			maybeStopHerdrWatcher()
 		}
 	}
 

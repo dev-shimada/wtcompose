@@ -163,7 +163,14 @@ herdr に「プラグイン」機構はなく、herdr 自身が公開してい�
 
    `herdr server reload-config` で反映される。ポートを報告していない workspace ではこの行は単に表示されない。
 
-2. worktree のペイン内(herdr が管理するペイン。`$HERDR_WORKSPACE_ID` が設定されている必要がある)で `docker compose up` した後、同じディレクトリで監視を起動する:
+2. herdr が管理するペイン内(`$HERDR_WORKSPACE_ID` が設定されている必要がある)で `wtcompose up` すると、監視がバックグラウンドで自動的に起動する。`wtcompose down` すると自動的に停止してトークンをクリアする:
+
+   ```sh
+   wtcompose up -d   # 👀 herdr ウォッチャーをバックグラウンドで起動しました(pid=...)
+   wtcompose down    # トークンをクリアしてウォッチャーを停止
+   ```
+
+   同じ workspace で `wtcompose up` を複数回実行しても、ウォッチャーは1つしか起動しない(pid ファイルは `~/.config/compose-worktree-override/herdr-watchers/<workspace_id>.pid`、ログは同ディレクトリの `.log`)。`docker compose up` を直接呼んだ場合など wtcompose を経由しないときは、監視も手動で起動する必要がある:
 
    ```sh
    wtcompose herdr
