@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/dev-shimada/wtcompose/internal/compose"
 )
 
@@ -49,8 +51,9 @@ services:
 	if !services[0].HasContainerName {
 		t.Error("db: HasContainerName = false, want true")
 	}
-	if !services[0].HasPorts || len(services[0].Ports) != 1 || services[0].Ports[0] != "5432:5432" {
-		t.Errorf("db: Ports = %v", services[0].Ports)
+	if !services[0].HasPorts || len(services[0].Ports) != 1 ||
+		services[0].Ports[0].Syntax != compose.PortShort || services[0].Ports[0].Raw != "5432:5432" {
+		t.Errorf("db: Ports = %+v", services[0].Ports)
 	}
 
 	if got, want := services[1].Name, "web"; got != want {
@@ -61,11 +64,11 @@ services:
 	}
 	wantPorts := []string{"8080:80", "5000:5000/udp"}
 	if len(services[1].Ports) != len(wantPorts) {
-		t.Fatalf("web: Ports = %v, want %v", services[1].Ports, wantPorts)
+		t.Fatalf("web: Ports = %+v, want %v", services[1].Ports, wantPorts)
 	}
 	for i, p := range wantPorts {
-		if services[1].Ports[i] != p {
-			t.Errorf("web: Ports[%d] = %q, want %q", i, services[1].Ports[i], p)
+		if services[1].Ports[i].Syntax != compose.PortShort || services[1].Ports[i].Raw != p {
+			t.Errorf("web: Ports[%d] = %+v, want Raw %q", i, services[1].Ports[i], p)
 		}
 	}
 
@@ -86,7 +89,7 @@ func TestParse_NoServicesKey(t *testing.T) {
 	}
 }
 
-func TestParse_LongSyntaxPortsRejected(t *testing.T) {
+func TestParse_LongSyntax(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "docker-compose.yml", `
 services:
@@ -94,15 +97,86 @@ services:
     ports:
       - target: 80
         published: 8080
+        protocol: tcp
+      - target: 90
+        published: "8000-8010"
+      - target: 100
+`)
+
+	services, err := compose.Parse(path)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(services) != 1 || len(services[0].Ports) != 3 {
+		t.Fatalf("got %+v, want 1 service with 3 ports", services)
+	}
+	ports := services[0].Ports
+
+	full := ports[0]
+	if full.Syntax != compose.PortLong || full.Target != "80" || full.Published != "8080" || full.Protocol != "tcp" {
+		t.Errorf("ports[0] = %+v, want target=80 published=8080 protocol=tcp", full)
+	}
+	if full.Node == nil {
+		t.Error("ports[0].Node is nil, want the original mapping node")
+	}
+
+	rangePort := ports[1]
+	if rangePort.Syntax != compose.PortLong || rangePort.Published != "8000-8010" {
+		t.Errorf("ports[1] = %+v, want published=8000-8010 (a range, preserved verbatim)", rangePort)
+	}
+
+	noPublished := ports[2]
+	if noPublished.Syntax != compose.PortLong || noPublished.Target != "100" || noPublished.Published != "" {
+		t.Errorf("ports[2] = %+v, want target=100 published=\"\" (omitted)", noPublished)
+	}
+}
+
+func TestParse_InvalidPortsEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "docker-compose.yml", `
+services:
+  web:
+    ports:
+      - - 80
+        - 8080
 `)
 
 	if _, err := compose.Parse(path); err == nil {
-		t.Fatal("Parse: expected error for long-syntax ports entry, got nil")
+		t.Fatal("Parse: expected error for a ports entry that's neither a scalar nor a mapping, got nil")
 	}
 }
 
 func TestParse_MissingFile(t *testing.T) {
 	if _, err := compose.Parse(filepath.Join(t.TempDir(), "nope.yml")); err == nil {
 		t.Fatal("Parse: expected error for missing file, got nil")
+	}
+}
+
+func TestSetPublishedPort(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "docker-compose.yml", `
+services:
+  web:
+    ports:
+      - target: 80
+        published: 8080
+        protocol: tcp
+`)
+
+	services, err := compose.Parse(path)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	node := services[0].Ports[0].Node
+
+	compose.SetPublishedPort(node, 20000)
+
+	out, err := yaml.Marshal(node)
+	if err != nil {
+		t.Fatalf("yaml.Marshal: %v", err)
+	}
+	want := "target: 80\npublished: 20000\nprotocol: tcp\n"
+	if string(out) != want {
+		t.Errorf("after SetPublishedPort, marshaled node =\n%s\nwant:\n%s", out, want)
 	}
 }

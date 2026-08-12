@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/dev-shimada/wtcompose/internal/compose"
 	"github.com/dev-shimada/wtcompose/internal/gitinfo"
 	"github.com/dev-shimada/wtcompose/internal/override"
@@ -25,12 +27,17 @@ import (
 
 const overrideFilename = "docker-compose.override.yml"
 
-// hostPortRegex matches `ports:` entries with an explicit host mapping,
-// e.g. "8080:80" or "8080:80/udp". Anything else (bind-address prefixed
-// entries, port ranges, container-only ports, env-var interpolations) is
-// passed through unchanged, since its host port can't be safely reassigned
-// here.
+// hostPortRegex matches short-syntax `ports:` entries with an explicit host
+// mapping, e.g. "8080:80" or "8080:80/udp". Anything else (bind-address
+// prefixed entries, port ranges, container-only ports, env-var
+// interpolations) is passed through unchanged, since its host port can't be
+// safely reassigned here.
 var hostPortRegex = regexp.MustCompile(`^[0-9]+:([0-9]+)(/(tcp|udp))?$`)
+
+// singlePortRegex matches a long-syntax entry's "published" field when it's
+// a single plain port number. Anything else (absent, or a range like
+// "8000-8010") is left as-is, for the same reason as hostPortRegex above.
+var singlePortRegex = regexp.MustCompile(`^[0-9]+$`)
 
 func main() {
 	if len(os.Args) > 1 {
@@ -219,9 +226,20 @@ func generateOverride(out io.Writer) error {
 			ov.ContainerName = namePrefix + "-" + svc.Name
 		}
 		if svc.HasPorts {
-			ov.Ports = make([]string, 0, len(svc.Ports))
-			for _, raw := range svc.Ports {
-				ov.Ports = append(ov.Ports, resolvePort(reg, info.RepoName, info.WorktreeName, svc.Name, raw))
+			ov.Ports = make([]override.PortLine, 0, len(svc.Ports))
+			for _, p := range svc.Ports {
+				switch p.Syntax {
+				case compose.PortShort:
+					ov.Ports = append(ov.Ports, override.PortLine{
+						Content: resolveShortPort(reg, info.RepoName, info.WorktreeName, svc.Name, p.Raw),
+					})
+				case compose.PortLong:
+					content, err := resolveLongPort(reg, info.RepoName, info.WorktreeName, svc.Name, p)
+					if err != nil {
+						return err
+					}
+					ov.Ports = append(ov.Ports, override.PortLine{Content: content, Long: true})
+				}
 			}
 		}
 		overrideServices = append(overrideServices, ov)
@@ -257,10 +275,10 @@ func generateOverride(out io.Writer) error {
 	return nil
 }
 
-// resolvePort reassigns the host side of a "host:container[/proto]" ports
-// entry to a worktree-unique port, persisted in the registry. Entries that
-// don't match that exact shape are returned unchanged.
-func resolvePort(reg *registry.Registry, repo, worktree, service, raw string) string {
+// resolveShortPort reassigns the host side of a "host:container[/proto]"
+// ports entry to a worktree-unique port, persisted in the registry. Entries
+// that don't match that exact shape are returned unchanged.
+func resolveShortPort(reg *registry.Registry, repo, worktree, service, raw string) string {
 	m := hostPortRegex.FindStringSubmatch(raw)
 	if m == nil {
 		return raw
@@ -274,4 +292,28 @@ func resolvePort(reg *registry.Registry, repo, worktree, service, raw string) st
 		return fmt.Sprintf("%d:%s/%s", hostPort, containerPort, proto)
 	}
 	return fmt.Sprintf("%d:%s", hostPort, containerPort)
+}
+
+// resolveLongPort reassigns a long-syntax ports entry's "published" field
+// to a worktree-unique port, the same way resolveShortPort does for the
+// short-syntax form, then renders the whole entry (every other field
+// preserved as originally written) as YAML content ready for
+// override.PortLine. Entries whose "published" isn't a single plain port
+// number (absent, or a range) are rendered unchanged.
+func resolveLongPort(reg *registry.Registry, repo, worktree, service string, p compose.Port) (string, error) {
+	if singlePortRegex.MatchString(p.Published) {
+		protocol := p.Protocol
+		if protocol == "" {
+			protocol = "tcp" // compose's own default, so key identity doesn't shift if it's later spelled out explicitly
+		}
+		key := strings.Join([]string{repo, worktree, service, "long", p.Target, p.Published, protocol}, "|")
+		hostPort := reg.Assign(key)
+		compose.SetPublishedPort(p.Node, hostPort)
+	}
+
+	data, err := yaml.Marshal(p.Node)
+	if err != nil {
+		return "", fmt.Errorf("service %q: ports エントリのレンダリングに失敗しました: %w", service, err)
+	}
+	return string(data), nil
 }
