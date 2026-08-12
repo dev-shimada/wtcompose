@@ -1,5 +1,7 @@
 # wtcompose
 
+[English](./README.en.md)
+
 複数の git worktree で同じ `docker-compose.yml` を並行して起動できるように、
 worktree ごとに一意な `container_name` / ホスト側ポートを割り当てた
 `docker-compose.override.yml` を生成する CLI。
@@ -10,12 +12,40 @@ worktree ごとに一意な `container_name` / ホスト側ポートを割り当
 
 ## Features
 
-- worktree ごとに一意な `container_name` / ホストポートを自動割り当て(`docker-compose.yml` 本体は変更しない)
-- ポート割り当ては `~/.config/compose-worktree-override/ports.tsv` に永続化。同じ repo/worktree/service/元ポートの組み合わせなら再実行しても同じ値を再利用
-- `wtcompose up` / `wtcompose down` / `wtcompose ps` など、`docker compose` のサブコマンドをそのまま実行できる透過ラッパー
-- [herdr](https://herdr.dev) と連携し、実際に起動しているコンテナのポートをサイドバーに常時表示(`wtcompose herdr`)
-- `docker compose` 本体の補完に委譲した bash/zsh/fish 向けシェル補完
+- **ポートの自動割り当て**: worktree ごとに一意な `container_name` とホストポートを自動生成する。`docker-compose.yml` 本体は変更しない
+- **割り当ての永続化**: 割り当てたポートは `~/.config/compose-worktree-override/ports.tsv` に保存される。同じ repo/worktree/service/元ポートの組み合わせなら、再実行しても同じ値を再利用する
+- **docker compose の透過ラッパー**: `wtcompose up` / `wtcompose down` / `wtcompose ps` のように、`docker compose` のサブコマンドをそのまま実行できる。override の再生成と本体コマンドの実行がまとめて行われる
+- **herdr 連携**: [herdr](https://herdr.dev) のサイドバーに、今そのディレクトリで実際に起動しているコンテナのポートを常時表示する
+- **シェル補完**: `docker compose` 本体の補完に委譲した bash/zsh/fish 向けシェル補完
 - 単一バイナリ、`yq` 不要
+
+## Requirements
+
+- Git
+- Docker Compose 2.24+(`ports: !override` タグに対応したバージョンが必要)
+- macOS または Linux(`docker compose` サブコマンドの実行にプロセス置き換え(`exec`)を使うため、Windows は非対応)
+
+## インストール
+
+### Homebrew
+
+```sh
+brew tap dev-shimada/wtcompose
+brew install wtcompose
+```
+
+### Go
+
+```sh
+go install github.com/dev-shimada/wtcompose@latest
+```
+
+もしくはこのディレクトリで:
+
+```sh
+make build   # ./wtcompose を生成
+make install # $GOBIN に install
+```
 
 ## 使い方
 
@@ -28,13 +58,13 @@ wtcompose
 
 - `container_name` または `ports` を持つ service について、`docker-compose.override.yml` を生成する
 - `container_name` は `<repo>-<worktree>-<service>`(repo名とworktree名が同じ、つまりメインworktreeなら `<repo>-<service>`)
-- `ports` のホスト側は `~/.config/compose-worktree-override/ports.tsv` に永続化された空きポート(20000〜)を割り当てる。同じ repo/worktree/service/元ポートの組み合わせなら再実行しても同じ値を再利用する
+- `ports` のホスト側は `~/.config/compose-worktree-override/ports.tsv` に永続化された空きポート(20000〜)を割り当てる
 - 元の `docker-compose.yml` は変更しない
-- 生成した `docker-compose.override.yml` は、git worktree 間で共有される `.git/info/exclude` に登録する(リポジトリ本体のファイルではなく worktree ローカルの設定なので、`git status` を汚さない)
+- 生成した `docker-compose.override.yml` は `.git/info/exclude` に登録するので、`git status` を汚さない
 - 対象 service が1つもない場合は何もせず、以前このツールが生成した override ファイルが残っていれば削除する
 - このツールが生成したものではない `docker-compose.override.yml` が既に存在する場合は上書きしない
 
-`docker compose` のサブコマンドをそのまま `wtcompose` に続けると、override の再生成 → `docker compose <args>` の実行をまとめて行う(`docker compose` を直接呼んでも override は自動的にマージされるが、その場合は生成し忘れないよう注意):
+`docker compose` のサブコマンドをそのまま `wtcompose` に続けると、override の再生成 → `docker compose <args>` の実行をまとめて行う:
 
 ```sh
 wtcompose up -d
@@ -43,10 +73,10 @@ wtcompose logs -f web
 wtcompose down
 ```
 
-- 実体は `docker compose <args>` へのプロセス置き換え(`exec`)なので、標準入出力・シグナル・終了コードは `docker compose` を直接呼んだ場合と同じ
-- override 生成時のメッセージは stderr に出す。`wtcompose ps --format json | jq` のように stdout をそのまま処理するコマンドと組み合わせても壊れない
+- 標準入出力・シグナル・終了コードは `docker compose` を直接呼んだ場合と同じ
+- override 生成時のメッセージは stderr に出すので、`wtcompose ps --format json | jq` のように stdout を処理するコマンドと組み合わせても壊れない
 - `herdr` は wtcompose 自身のサブコマンドとして予約されているため、`docker compose herdr` へは渡らない([herdr との統合](#herdr-との統合)参照)
-- `-f`/`--file` または `COMPOSE_FILE` で compose ファイルを明示すると `docker-compose.override.yml` が自動読み込みされずポート分離が効かなくなるため、wtcompose はエラーで停止する。その場合は `docker compose -f ... ...` を直接実行すること
+- `-f`/`--file` または `COMPOSE_FILE` で compose ファイルを明示すると、`docker-compose.override.yml` が自動読み込みされずポート分離が効かなくなるため、wtcompose はエラーで停止する。その場合は `docker compose -f ...` を直接実行すること
 - override の生成に失敗する場合(このツールが生成したものではない `docker-compose.override.yml` が既にある等)は `down` / `ps` を含めどのサブコマンドも実行しない。回避したい場合は `docker compose down` などを直接呼ぶ
 
 ### 例
@@ -104,31 +134,9 @@ services:
       - "20005:5432"
 ```
 
-## インストール
-
-### Homebrew
-
-```sh
-brew tap dev-shimada/wtcompose
-brew install wtcompose
-```
-
-### Go
-
-```sh
-go install github.com/dev-shimada/wtcompose@latest
-```
-
-もしくはこのディレクトリで:
-
-```sh
-make build   # ./wtcompose を生成
-make install # $GOBIN に install
-```
-
 ## シェル補完
 
-`herdr` を除く `wtcompose` のサブコマンドはそのまま `docker compose` への引数になるので、補完も `docker` 本体に丸ごと委譲している。`docker completion <shell>` が生成するスクリプトの識別子を `wtcompose` にリネームしているだけなので、`docker compose` が知っているサブコマンド・フラグ・サービス名の補完(実行中のコンテナ名なども含む)はそのまま使える。`herdr` サブコマンドと `--interval` フラグの補完だけ wtcompose 側で追加している。
+`herdr` を除く `wtcompose` のサブコマンドはそのまま `docker compose` への引数になるので、補完も `docker` 本体に丸ごと委譲している。`docker compose` が知っているサブコマンド・フラグ・サービス名の補完(実行中のコンテナ名なども含む)がそのまま使える。
 
 ```sh
 # bash (~/.bashrc 等に追記)
@@ -141,16 +149,11 @@ source <(wtcompose completion zsh)
 wtcompose completion fish | source
 ```
 
-`docker` コマンドがインストールされている必要がある(内部で `docker completion <shell>` と `docker __complete compose ...` を呼び出す)。
+`docker` コマンドがインストールされている必要がある。
 
 ## herdr との統合
 
 [herdr](https://herdr.dev) はコーディングエージェント向けのターミナルマルチプレクサ。worktree ごとに割り当てられたポートは worktree を切り替えるたびに変わるため、`wtcompose herdr` は今そのディレクトリで**実際に起動しているコンテナ**が何番のポートを listen しているかを herdr のサイドバーに常時表示する。
-
-herdr に「プラグイン」機構はなく、herdr 自身が公開している以下の仕組みを組み合わせて実現している:
-
-- `herdr workspace report-metadata` — ワークスペースに表示専用の `--token NAME=VALUE` を報告できる(`--ttl-ms` で自動失効も設定可能)
-- `config.toml` の `[ui.sidebar.spaces].rows` — 組み込みの行(`state_icon` / `workspace` / `branch` / `git_status`)に加えて、報告済みトークンを `"$トークン名"` の形で行として追加表示できる
 
 ### セットアップ
 
@@ -180,30 +183,26 @@ herdr に「プラグイン」機構はなく、herdr 自身が公開してい�
 
    `Ctrl-C` で止めるとトークンを明示的にクリアしてから終了する。プロセスが強制終了された場合でも、TTL(ポーリング間隔の3倍)が切れれば自動的にサイドバーから消える。
 
-## 対応していないポート形式
+## 対応しているポート形式
 
-`ports` のうち `"ホスト:コンテナ"` (`"ホスト:コンテナ/tcp"` / `"/udp"` 含む) の形式だけホスト側を付け替える。
+`ports` のうち、ホスト側ポートが1つの整数として明示されている以下の形式を、worktree ごとに一意な値へ付け替える:
+
+- short syntax: `"ホスト:コンテナ"`(`"ホスト:コンテナ/tcp"` / `"/udp"` も含む)
+- long syntax: `published` が単一のポート番号であるマッピング形式(`target:`/`published:`/`protocol:` など、他のフィールドは元の値のまま保持される)
+
 以下はそのまま出力される(= ホスト側ポートの衝突は解消されない):
 
 - bind アドレス付き (`"127.0.0.1:8080:80"`)
-- ポート範囲 (`"8000-8010:8000-8010"`)
-- コンテナ側のみ (`"80"`)
-- long syntax (`target:`/`published:` を使うマッピング形式) — この場合はエラーで停止する
+- ポート範囲 (`"8000-8010:8000-8010"`、long syntax で `published: "8000-8010"` の場合も同様)
+- コンテナ側のみ (`"80"`、long syntax で `published` を省略した場合も同様)
 
-元の zsh 版と同じ制約。空きポートの判定も `ports.tsv` に記録済みのポートとの重複回避のみで、
-実際に OS 上で bind 可能かはチェックしない。
+空きポートの判定は `ports.tsv` に記録済みのポートとの重複回避のみで、実際に OS 上で bind 可能かはチェックしない。
 
 ## 開発
 
 ```sh
 go test ./...
 ```
-
-## Requirements
-
-- Git
-- Docker Compose 2.24+(`ports: !override` タグに対応したバージョンが必要)
-- macOS または Linux(`docker compose` サブコマンドの実行にプロセス置き換え(`exec`)を使うため、Windows は非対応。`.goreleaser.yml` も linux/darwin のみビルドする)
 
 ## License
 
