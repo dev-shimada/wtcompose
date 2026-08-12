@@ -10,29 +10,29 @@ import (
 // back to filename completion when there are no candidates.
 const noFileCompDirective = ":4"
 
-// runCompletionScript prints a shell completion script for wtcompose by
-// taking docker's own generated completion script (which already knows how
-// to complete every `docker compose` subcommand, flag, and service name)
-// and renaming its identifiers/registration target from "docker" to
-// "wtcompose". The only wtcompose-specific behavior is implemented once, in
-// runComplete, which the renamed script calls into via `wtcompose
-// __complete ...` exactly the way the original calls `docker __complete
-// ...` — Cobra's generated scripts invoke the program name from the command
-// line ($words[0]) rather than a hardcoded path, so renaming is sufficient.
+// runCompletionScript implements `wtcompose completion` by forwarding args
+// verbatim to `docker completion` and renaming "docker" to "wtcompose" in
+// its output. This is deliberately not reimplemented as our own Cobra-style
+// command: docker's own already handles every case the same way Cobra does
+// - no args or --help/-h prints the usage listing of available shells,
+// "bash --help" prints that shell's own help, an unknown shell prints the
+// same usage listing - all on stdout with exit 0. Forwarding everything
+// gets that behavior, renamed, for free instead of re-deriving it and
+// inevitably drifting from it (an earlier version hand-rolled its own
+// argument validation here and broke exactly this: `completion --help`
+// was treated as an unknown shell name instead of showing help).
+//
+// For an actual shell name, the output is the real completion script
+// (see runComplete for how it calls back into this binary).
 func runCompletionScript(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("使い方: wtcompose completion <bash|zsh|fish>")
-	}
-	shell := args[0]
-	switch shell {
-	case "bash", "zsh", "fish":
-	default:
-		return fmt.Errorf("対応していないシェルです: %s(bash/zsh/fish のいずれか)", shell)
-	}
-
-	out, err := exec.Command("docker", "completion", shell).Output()
+	out, err := exec.Command("docker", append([]string{"completion"}, args...)...).Output()
 	if err != nil {
-		return fmt.Errorf("docker completion %s の取得に失敗しました(docker がインストールされている必要があります): %w", shell, err)
+		if ee, ok := err.(*exec.ExitError); ok {
+			if stderr := strings.TrimSpace(string(ee.Stderr)); stderr != "" {
+				return fmt.Errorf("docker completion: %s", stderr)
+			}
+		}
+		return fmt.Errorf("docker completion の実行に失敗しました(docker がインストールされている必要があります): %w", err)
 	}
 
 	fmt.Print(strings.ReplaceAll(string(out), "docker", "wtcompose"))
