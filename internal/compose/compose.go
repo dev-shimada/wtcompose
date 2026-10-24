@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // PortSyntax distinguishes the two ways a `ports:` list entry can be
