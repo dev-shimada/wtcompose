@@ -17,7 +17,7 @@ import (
 	"strings"
 	"syscall"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/dev-shimada/wtcompose/internal/compose"
 	"github.com/dev-shimada/wtcompose/internal/gitinfo"
