@@ -250,8 +250,8 @@ func generateOverride(out io.Writer) error {
 		if err := os.Remove(overridePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		fmt.Fprintln(out, "ℹ️  container_name / ports を持つserviceがないため、上書きは不要です")
-		return nil
+		_, err := fmt.Fprintln(out, "ℹ️  container_name / ports を持つserviceがないため、上書きは不要です")
+		return err
 	}
 
 	// Persist port assignments before writing the override file: if this
@@ -270,9 +270,11 @@ func generateOverride(out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(out, "✅ %s を生成しました(%s/%s)\n", overrideFilename, info.RepoName, info.WorktreeName)
-	fmt.Fprint(out, content)
-	return nil
+	if _, err := fmt.Fprintf(out, "✅ %s を生成しました(%s/%s)\n", overrideFilename, info.RepoName, info.WorktreeName); err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(out, content)
+	return err
 }
 
 // resolveShortPort reassigns the host side of a "host:container[/proto]"

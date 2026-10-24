@@ -73,7 +73,7 @@ func gitCommonDir(cwd string) (string, error) {
 // already listed there. info/exclude is shared across all worktrees of a
 // repo but is never committed, which is why it's used to hide the
 // generated, worktree-local override file from `git status`.
-func RegisterExclude(commonDir, filename string) error {
+func RegisterExclude(commonDir, filename string) (err error) {
 	excludeDir := filepath.Join(commonDir, "info")
 	if err := os.MkdirAll(excludeDir, 0o755); err != nil {
 		return err
@@ -90,7 +90,11 @@ func RegisterExclude(commonDir, filename string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
 	_, err = f.WriteString(filename + "\n")
 	return err
@@ -104,7 +108,7 @@ func containsExactLine(path, want string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
