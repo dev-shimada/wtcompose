@@ -1,5 +1,16 @@
 # wtcompose
 
+<p align="center">
+  <a href="https://github.com/dev-shimada/wtcompose/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/dev-shimada/wtcompose/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI"></a>
+  <a href="https://github.com/dev-shimada/wtcompose/blob/main/go.mod"><img alt="Go Version" src="https://img.shields.io/github/go-mod/go-version/dev-shimada/wtcompose?style=flat-square&logo=go&logoColor=white"></a>
+  <a href="https://github.com/dev-shimada/wtcompose/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/dev-shimada/wtcompose?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dev-shimada/wtcompose/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/dev-shimada/wtcompose?style=flat-square&logo=github&logoColor=white"></a>
+  <a href="#install"><img alt="Homebrew" src="https://img.shields.io/badge/homebrew-dev--shimada%2Fwtcompose-FBB040?style=flat-square&logo=homebrew&logoColor=white"></a>
+</p>
+
 [日本語](./README.md)
 
 A CLI that generates a `docker-compose.override.yml` assigning each git worktree
