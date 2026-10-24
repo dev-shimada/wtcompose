@@ -167,6 +167,9 @@ services:
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
+	if len(services) == 0 || len(services[0].Ports) == 0 {
+		t.Fatalf("Parse returned no ports: %+v", services)
+	}
 	node := services[0].Ports[0].Node
 
 	compose.SetPublishedPort(node, 20000)

@@ -58,7 +58,8 @@ func maybeStartHerdrWatcher(cwd string) {
 		fmt.Fprintln(os.Stderr, "⚠️  herdr ウォッチャーの起動に失敗しました: "+err.Error())
 		return
 	}
-	defer logFile.Close()
+	// The child holds its own dup of the fd; a failed Close here changes nothing.
+	defer func() { _ = logFile.Close() }()
 
 	cmd := exec.Command(exe, "herdr")
 	cmd.Dir = cwd
@@ -90,7 +91,7 @@ func maybeStopHerdrWatcher() {
 	}
 	pid, alive := readAlivePID(pidFile)
 	if !alive {
-		os.Remove(pidFile)
+		_ = os.Remove(pidFile)
 		return
 	}
 
@@ -99,7 +100,7 @@ func maybeStopHerdrWatcher() {
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 		fmt.Fprintln(os.Stderr, "⚠️  herdr ウォッチャーの停止に失敗しました: "+err.Error())
 	}
-	os.Remove(pidFile)
+	_ = os.Remove(pidFile)
 }
 
 // readAlivePID reads a pid file and confirms the process it names is still

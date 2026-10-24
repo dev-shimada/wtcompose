@@ -51,7 +51,7 @@ func Load(path string) (*Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open registry: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -98,7 +98,7 @@ func (r *Registry) Assign(key string) int {
 }
 
 // Flush appends any newly assigned entries to the registry file on disk.
-func (r *Registry) Flush() error {
+func (r *Registry) Flush() (err error) {
 	if len(r.pending) == 0 {
 		return nil
 	}
@@ -107,7 +107,11 @@ func (r *Registry) Flush() error {
 	if err != nil {
 		return fmt.Errorf("open registry for write: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("close registry: %w", cerr)
+		}
+	}()
 
 	w := bufio.NewWriter(f)
 	for _, e := range r.pending {
