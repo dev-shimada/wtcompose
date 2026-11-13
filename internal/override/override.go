@@ -3,6 +3,7 @@ package override
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -36,10 +37,27 @@ type Service struct {
 	Ports         []PortLine
 }
 
-// Build renders the override file contents for the given services, in the
-// order provided. It returns "" if none of the services have anything to
-// override.
-func Build(services []Service) string {
+// projectNameChars matches the characters docker compose allows in a
+// project name.
+var projectNameChars = regexp.MustCompile(`[a-z0-9_-]+`)
+
+// ProjectName normalizes raw into a valid compose project name (lowercase
+// alphanumerics, "-" and "_", starting with an alphanumeric). It applies
+// the same rule docker compose itself uses to derive the default project
+// name from a directory name - lowercase, drop every other character, trim
+// leading "-"/"_" - so a main worktree, whose raw name is just its
+// directory name, keeps the project name it had before this tool set one.
+// It returns "" when nothing valid is left.
+func ProjectName(raw string) string {
+	name := strings.Join(projectNameChars.FindAllString(strings.ToLower(raw), -1), "")
+	return strings.TrimLeft(name, "_-")
+}
+
+// Build renders the override file contents: the top-level compose project
+// name (omitted when projectName is "") followed by the given services, in
+// the order provided. It returns "" if there is neither a project name nor
+// any service with something to override.
+func Build(projectName string, services []Service) string {
 	var any bool
 	for _, s := range services {
 		if s.ContainerName != "" || s.HasPorts {
@@ -47,12 +65,20 @@ func Build(services []Service) string {
 			break
 		}
 	}
-	if !any {
+	if projectName == "" && !any {
 		return ""
 	}
 
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
+	if projectName != "" {
+		// Quoted so an all-digit or otherwise YAML-special name (123,
+		// true, null) still reaches compose as the string it requires.
+		fmt.Fprintf(&b, "name: %q\n", projectName)
+	}
+	if !any {
+		return b.String()
+	}
 	b.WriteString("services:\n")
 
 	for _, s := range services {

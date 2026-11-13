@@ -1,7 +1,7 @@
 // Command wtcompose generates a docker-compose.override.yml that gives the
-// current git worktree its own container_name and host ports, so several
-// worktrees of the same repo can run `docker compose up` at the same time
-// without colliding.
+// current git worktree its own compose project name, container_name and
+// host ports, so several worktrees - of the same repo or of different ones
+// - can run `docker compose up` at the same time without colliding.
 //
 // It is a Go port of the compose-worktree-override shell function: same
 // registry file, same override marker, same behavior, no dependency on yq.
@@ -168,7 +168,7 @@ func run() error {
 
 // generateOverride parses docker-compose.yml in the current directory and
 // (re)writes docker-compose.override.yml with this worktree's unique
-// container_name / ports, reporting progress to out. Bare `wtcompose`
+// project name / container_name / ports, reporting progress to out. Bare `wtcompose`
 // writes to stdout; compose-passthrough invocations write to stderr so
 // stdout stays byte-identical to the wrapped docker compose command.
 func generateOverride(out io.Writer) error {
@@ -245,12 +245,21 @@ func generateOverride(out io.Writer) error {
 		overrideServices = append(overrideServices, ov)
 	}
 
-	content := override.Build(overrideServices)
+	// Without an explicit name, docker compose derives the project name
+	// from the directory basename alone, so same-named worktree
+	// directories - even of unrelated repos - would share one project:
+	// `down` removes the other's containers, and they share built image
+	// names and the default network. Namespacing it like container_name
+	// keeps them apart. COMPOSE_PROJECT_NAME and -p still take precedence
+	// over this.
+	content := override.Build(override.ProjectName(namePrefix), overrideServices)
 	if content == "" {
+		// Only reachable when the repo/worktree names contain no character
+		// valid in a project name and no service needs an override.
 		if err := os.Remove(overridePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		_, err := fmt.Fprintln(out, "ℹ️  container_name / ports を持つserviceがないため、上書きは不要です")
+		_, err := fmt.Fprintln(out, "ℹ️  プロジェクト名を決められず、container_name / ports を持つserviceもないため、上書きは不要です")
 		return err
 	}
 
